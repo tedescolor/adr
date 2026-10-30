@@ -1,0 +1,14 @@
+{
+  "name": "adr",
+  "description": "Agentic distributional regression (ADR) for Claude Code",
+  "owner": {
+    "name": "Lorenzo Tedesco"
+  },
+  "plugins": [
+    {
+      "name": "adr",
+      "source": ".",
+      "description": "Agentic distributional regression (/adr data.csv response)"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "adr",
+  "description": "Agentic distributional regression: estimate the conditional distribution of a response with an isolated Claude agent that returns a short, readable program",
+  "version": "0.1.0",
+  "author": {"name": "Lorenzo Tedesco and Francesco Finazzi"},
+  "homepage": "https://arxiv.org/abs/2610.37611",
+  "repository": "https://github.com/tedescolor/adr",
+  "license": "MIT",
+  "keywords": ["statistics", "conditional density estimation", "distributional regression"]
+}

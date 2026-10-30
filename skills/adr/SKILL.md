@@ -1,0 +1,70 @@
+---
+name: adr
+description: Run agentic distributional regression (ADR) on a csv file. An isolated Claude agent estimates the conditional distribution of a response given covariates and returns a short, readable program; the run is evaluated on held-out rows. Use when the user asks to run ADR, or to estimate a conditional density or distributional regression with this plugin.
+argument-hint: <data.csv> [covariate ...] <response> [--budget MIN] [--model NAME]
+allowed-tools: Bash, Read
+---
+
+# Run ADR
+
+The user invoked ADR with: `$ARGUMENTS`
+
+ADR is the method of Tedesco and Finazzi, *Agentic Distributional Regression*
+(arXiv:2610.37611). The estimate must come from a **separate, isolated agent** started by the
+`adr` command, which sees only the anonymized training data, the distribution library and a
+fixed task description. **Do not estimate the model yourself, do not edit `model.py`, and do
+not tell the agent anything about the data**: that would no longer be ADR.
+
+## 1. Read the arguments
+
+- The first argument is the csv file (header row required).
+- The other names are columns: **the last name is the response**, the names before it are the
+  covariates. With only one name, it is the response and all other columns are covariates.
+  For a bivariate response, the user writes `--response Y1 Y2` (then all other names are
+  covariates).
+- Options passed through unchanged: `--budget MIN` (default 60), `--model NAME` (default
+  `claude-opus-5-5`), `--test-fraction F` (default 0.2), `--test FILE`, `--keep-names`,
+  `--sandbox`, `--seed N`.
+
+Read the csv header (`head -1`) to check that the columns exist. If the arguments are missing
+or ambiguous, show the header and ask the user which column is the response.
+
+## 2. Prepare the environment
+
+```bash
+PY="$("${CLAUDE_PLUGIN_ROOT}/scripts/ensure_env.sh")"
+command -v claude >/dev/null || echo "MISSING: the claude CLI is needed to start the agent"
+```
+
+The first call creates a Python environment with the `adr` package (a minute or two).
+If `claude` is missing, tell the user to install Claude Code (the `claude` command) and stop.
+
+## 3. Start the run
+
+Tell the user, in one or two lines, what will run: the response, the covariates, the model,
+the time budget, the held-out fraction, and that the training data are sent to the Anthropic
+API through Claude Code (in the paper, a run with Claude Opus 5.5 cost about 1 USD in
+median and at most about 3.5 USD, and took 13 to 18 minutes in median). Then start it **in the background** (it can take up to the time budget):
+
+```bash
+"$PY" -m adr fit DATA.csv --response RESPONSE [--covariates C1 C2 ...] \
+      --budget MIN --model NAME --out adr_runs/NAME_OF_RUN
+```
+
+Choose `adr_runs/<csv stem>-<response>` as output directory (add a suffix if it exists). Do
+not poll: wait for the background command to finish.
+
+## 4. Report
+
+When the command has finished, read `<out>/report.md` and give the user:
+
+- the held-out NLL of ADR next to the two reference models, and the interval coverage;
+- the returned program, with a plain-language reading of it: which distribution family,
+  which covariates enter the location, the scale or the mixture weights, any change of regime
+  (in `model.py`, `x[j]` is the j-th covariate, as listed in the report);
+- the audit flags, if any, and the status of the output contract;
+- where the files are (`report.md`, `model.py`, `notes.md`, figures), and how to use the
+  estimate from Python (`adr.load(<out>)`, shown at the end of the report).
+
+If the contract is not satisfied or no program was written, say so plainly and show the end
+of `<out>/task/agent_stderr.log`. Mention that another run may return a different program.
