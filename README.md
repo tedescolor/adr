@@ -16,7 +16,7 @@ The code and results of the paper are in
 [ADR_replication](https://github.com/tedescolor/ADR_replication). This repository is the tool
 to use the method on your own data.
 
-![Estimated conditional density of the example data](docs/example_density.png)
+![How ADR works: the agent receives the data, the library, the output contract, the scoring criterion and a time budget; it proposes, fits, checks and revises models, and returns a short program whose numbers are the parameters and whose formulas are the model; if the program satisfies the contract it defines the estimated conditional density.](docs/adr_overview.png)
 
 ## Quick start in Claude Code: `/adr`
 
