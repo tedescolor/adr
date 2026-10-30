@@ -1,7 +1,7 @@
 ---
 name: adr
 description: Run agentic distributional regression (ADR) on a csv file. An isolated Claude agent estimates the conditional distribution of a response given covariates and returns a short, readable program; the run is evaluated on held-out rows. Use when the user asks to run ADR, or to estimate a conditional density or distributional regression with this plugin.
-argument-hint: <data.csv> [covariate ...] <response> [--budget MIN] [--model NAME]
+argument-hint: <data.csv> [-x covariate ...] -y <response> [--budget MIN] [--model NAME]
 allowed-tools: Bash, Read
 ---
 
@@ -17,17 +17,25 @@ not tell the agent anything about the data**: that would no longer be ADR.
 
 ## 1. Read the arguments
 
-- The first argument is the csv file (header row required).
-- The other names are columns: **the last name is the response**, the names before it are the
-  covariates. With only one name, it is the response and all other columns are covariates.
-  For a bivariate response, the user writes `--response Y1 Y2` (then all other names are
-  covariates).
-- Options passed through unchanged: `--budget MIN` (default 60), `--model NAME` (default
-  `claude-opus-5-5`), `--test-fraction F` (default 0.2), `--test FILE`, `--keep-names`,
-  `--sandbox`, `--seed N`.
+The first argument is the csv file (header row required). The response and the covariates can
+be given in three ways:
 
-Read the csv header (`head -1`) to check that the columns exist. If the arguments are missing
-or ambiguous, show the header and ask the user which column is the response.
+1. **Explicitly**, as on the command line: `-y RESPONSE` (or `--response`; two names for a
+   bivariate response) and, optionally, `-x COV1 COV2 ...` (or `--covariates`; default: all
+   other columns). Example: `/adr:adr data.csv -x age education -y income`.
+2. **By position**: the names after the file are columns, and **the last name is the response**;
+   the names before it are the covariates. With a single name, it is the response and all
+   other columns are covariates. Example: `/adr:adr data.csv age education income`.
+3. **In words**, for example `/adr:adr data.csv predict income from age and education`: then
+   identify the response and the covariates from the sentence and the csv header.
+
+Options passed through unchanged: `--budget MIN` (default 60), `--model NAME` (default
+`claude-opus-5-5`), `--test-fraction F` (default 0.2), `--test FILE`, `--keep-names`,
+`--sandbox`, `--seed N`.
+
+Read the csv header (`head -1`) to check that the columns exist. Before starting, state which
+column is the response and which are the covariates. If this is ambiguous, show the header
+and ask the user.
 
 ## 2. Prepare the environment
 

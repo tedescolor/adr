@@ -30,12 +30,16 @@ Install the plugin once, inside Claude Code:
 Then, in any project:
 
 ```
-/adr:adr data.csv income                         # response `income`, all other columns as covariates
-/adr:adr data.csv age education income           # covariates `age`, `education`; response `income`
-/adr:adr data.csv income --budget 30 --model claude-sonnet-5-5
+/adr:adr data.csv -y income                      # response `income`; all other columns are covariates
+/adr:adr data.csv -x age education -y income     # covariates `age` and `education`; response `income`
+/adr:adr data.csv -y income --budget 30 --model claude-sonnet-5-5
 ```
 
-The last column name is the response; for a bivariate response write `--response Y1 Y2`.
+`-y` (or `--response`) gives the response, two columns for a bivariate response, and `-x` (or
+`--covariates`) the covariates; without `-x`, all other columns are covariates. A short form
+without flags also works: the last column name is the response and the names before it are the
+covariates (`/adr:adr data.csv age education income`). You can also write it in words:
+`/adr:adr data.csv predict income from age and education`.
 Claude prepares the task, starts the isolated agent in the background, and, when it has
 finished, shows you the held-out evaluation and explains the returned program.
 

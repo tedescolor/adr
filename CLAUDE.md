@@ -8,7 +8,7 @@ the steps below. They are the same as those of the `/adr` skill in `skills/adr/S
 not estimate the model yourself, do not edit the returned `model.py`, and do not describe the
 data to the agent: that would no longer be ADR.
 
-1. **Arguments.** Identify the csv file, the response column (or two columns for a bivariate
+1. **Arguments.** Identify the csv file, the response column (`-y`) (or two columns for a bivariate
    response) and, optionally, the covariates (default: all other columns), the model (default
    `claude-opus-5-5`) and the time budget in minutes (default 60). Check the header of the csv;
    if the response is unclear, ask the user.
