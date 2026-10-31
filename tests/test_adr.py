@@ -164,3 +164,17 @@ def test_fit_mixed_and_discrete_with_given_programs(tmp_path):
         info = json.loads((out / "run.json").read_text())
         assert info["contract"] == "ok" and np.isfinite(info["evaluation"]["nll"])
         assert info["evaluation"]["nll"] <= info["evaluation"]["reference"][refs] + 0.05
+
+
+def test_printing_and_plotting(tmp_path):
+    import matplotlib
+    matplotlib.use("Agg")
+    out = tmp_path / "run"
+    subprocess.run([sys.executable, "-m", "adr", "fit", str(DATA), "-y", "y",
+                    "--program", str(PROGRAM), "--out", str(out)], check=True, cwd=ROOT)
+    fit = adr.load(out)
+    assert "response type: continuous" in repr(fit) and "x[0] = x" in repr(fit)
+    assert repr(fit.distribution({"x": 0.8})).startswith("Mixture(weights=[0.5, 0.5]; Normal(")
+    q = fit.quantile({"x": 0.8}, [0.1, 0.5, 0.9])
+    assert np.all(np.diff(q) > 0)
+    fit.plot([{"x": 0.3}, {"x": 0.8}])

@@ -368,6 +368,55 @@ def dot(a, b):
     return float(np.dot(a, b))
 
 
+
+# ------------------------------------------------------------------ readable printing
+def _fmt(v):
+    v = np.asarray(v, dtype=float)
+    if v.size == 1:
+        return f"{float(v):.4g}"
+    return "[" + ", ".join(f"{t:.4g}" for t in v.ravel()[:6]) + (", ...]" if v.size > 6 else "]")
+
+
+def _scipy_repr(d):
+    name, a, k = d.dist.name, d.args, d.kwds
+    p = list(a) + [k[x] for x in ("loc", "scale") if x in k]
+    if name == "norm":
+        return f"Normal(loc={_fmt(p[0])}, scale={_fmt(p[1])})"
+    if name == "t":
+        return f"StudentT(df={_fmt(p[0])}, loc={_fmt(p[1])}, scale={_fmt(p[2])})"
+    if name == "skewnorm":
+        return f"SkewNormal(loc={_fmt(p[1])}, scale={_fmt(p[2])}, shape={_fmt(p[0])})"
+    if name == "laplace":
+        return f"Laplace(loc={_fmt(p[0])}, scale={_fmt(p[1])})"
+    if name == "lognorm":
+        return f"LogNormal(mu={_fmt(np.log(k['scale']))}, sigma={_fmt(a[0])})"
+    if name == "gamma":
+        return f"Gamma(shape={_fmt(a[0])}, rate={_fmt(1 / np.asarray(k['scale']))})"
+    if name == "poisson":
+        return f"Poisson(rate={_fmt(a[0])})"
+    if name == "nbinom":
+        r, q = np.asarray(a[0]), np.asarray(a[1])
+        return f"NegativeBinomial(mean={_fmt(r * (1 - q) / q)}, size={_fmt(r)})"
+    if name == "binom":
+        return f"Binomial(trials={_fmt(a[0])}, prob={_fmt(a[1])})"
+    if name == "betabinom":
+        return f"BetaBinomial(trials={_fmt(a[0])}, a={_fmt(a[1])}, b={_fmt(a[2])})"
+    return f"{name}({', '.join(_fmt(v) for v in a)})"
+
+
+Scipy.__repr__ = lambda self: _scipy_repr(self.d)
+ScipyDiscrete.__repr__ = lambda self: _scipy_repr(self.d)
+Mixture.__repr__ = lambda self: ("Mixture(weights=" + _fmt(self.w) + "; "
+                                 + ", ".join(repr(c) for c in self.components) + ")")
+PointMass.__repr__ = lambda self: f"PointMass({_fmt(self.a)})"
+Categorical.__repr__ = lambda self: ("Categorical(values=" + _fmt(self.values) + ", probs="
+                                     + _fmt(self.p) + ")")
+Shift.__repr__ = lambda self: f"Shift({self.dist!r}, {_fmt(self.c)})"
+MultivariateNormal.__repr__ = lambda self: (f"MultivariateNormal(mean={_fmt(self.mean)}, "
+                                            f"cov={_fmt(self.d.cov)})")
+Independent.__repr__ = lambda self: "Independent(" + ", ".join(repr(c) for c in self.components) + ")"
+Sequential.__repr__ = lambda self: f"Sequential(first={self.first!r}, cond=<function of y1>)"
+
 __all__ = [
     "Distribution", "Normal", "StudentT", "SkewNormal", "Laplace", "LogNormal", "Gamma",
     "MultivariateNormal", "Cov2", "Independent", "Sequential", "Mixture",

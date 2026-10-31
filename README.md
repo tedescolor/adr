@@ -162,14 +162,80 @@ In the output directory:
 
 ## Using the estimate in Python
 
+`adr fit` saves the estimate in its output directory (`--out`, by default
+`adr_runs/<data>-<time>`): the program `model.py`, and `run.json` with the order of the
+covariates, the response type and the evaluation. `adr.load` reads this directory and gives you
+an object to use the estimate, without running the agent again. The examples below use the run
+of the example data (`--out adr_runs/example`, see [Example](#example)).
+
+**Load the estimate and look at it.**
+
 ```python
-import adr, numpy as np
-fit = adr.load("adr_runs/data-income")
-d = fit.distribution({"age": 40, "education": 16})   # an adr.dist.Distribution
-d.logpdf(np.array([30000.0])); d.cdf(np.array([30000.0])); d.ppf(0.9)
-d.sample(np.random.default_rng(0), 1000)
-fit.logpdf(test_df)          # log-density of each row of a data frame
+import adr
+fit = adr.load("adr_runs/example")   # the output directory of `adr fit`
+print(fit)
 ```
+
+```
+ADR estimate of y given 1 covariate (examples/branched.csv)
+  covariates: x[0] = x
+  response type: continuous
+  held-out NLL: 0.2443 (normal, no covariates: 1.3795; linear Gaussian: 1.0903)
+  program (model.py):
+
+    from adr.dist import Normal, Mixture, maximum
+
+    def model(x):
+        t = x[0]
+        up = ((-9.911676 * t + 19.820231) * t - 7.408399) * t + 0.001434
+        lo = up - 8.394843 * maximum(t - 0.352661, 0.0) ** 2
+        sd = maximum(0.400441 - 0.319172 * t, 0.02)
+        return Mixture([0.5, 0.5], [Normal(up, sd), Normal(lo, sd)])
+```
+
+**The estimated distribution at given values of the covariates.** Pass the covariates by
+name, as in the csv:
+
+```python
+d = fit.distribution({"x": 0.8})
+print(d)
+```
+
+```
+Mixture(weights=[0.5, 0.5]; Normal(loc=1.685, scale=0.1451), Normal(loc=0.004974, scale=0.1451))
+```
+
+that is, at x = 0.8 the estimated law of y is an equal mixture of two normal distributions
+centered at 1.69 and 0.00. To plot the estimated conditional densities at some values of the
+covariates:
+
+```python
+fit.plot([{"x": 0.3}, {"x": 0.8}])
+```
+
+![Estimated conditional densities at x = 0.3 and x = 0.8](docs/plot_example.png)
+
+**Probabilities, quantiles and simulations.**
+
+```python
+import numpy as np
+d.cdf(1.0)                                   # P(Y <= 1 | x = 0.8): 0.50
+fit.quantile({"x": 0.8}, [0.1, 0.5, 0.9])    # conditional quantiles: -0.12, 0.84, 1.81
+d.sample(np.random.default_rng(0), 1000)     # 1000 simulated responses at x = 0.8
+d.logpdf(np.array([1.7]))                    # log density at y = 1.7
+```
+
+**Many rows at once**, from a data frame with the same columns as the csv:
+
+```python
+fit.logpdf(df)          # log-likelihood of the response of each row
+fit.sample(df, n=100)   # 100 simulated responses for each row
+```
+
+For a mixed response, `print(d)` shows the point masses (for example
+`Mixture(weights=[0.77, 0.23]; PointMass(0), LogNormal(mu=0.7, sigma=0.5))`), `d.logmass(y)`
+gives log P(Y = y | x) and `fit.plot` reports P(Y = atom | x) in the legend; for a discrete
+response, `fit.plot` draws the probabilities P(Y = y | x).
 
 ## How it works
 
