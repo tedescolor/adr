@@ -60,6 +60,69 @@ Without installing anything, you can ask Claude Code something like:
 
 Claude clones the repository and follows [CLAUDE.md](CLAUDE.md).
 
+## Example
+
+`examples/branched.csv` contains 1,000 simulated observations from the univariate design of the
+paper. For x < 0.5, y follows one noisy curve; from x = 0.5 on, it splits into two branches of
+equal probability, and the noise decreases with x:
+
+![The example data](docs/example_data.png)
+
+(The true model: X ~ Unif(0, 1); for x < 0.5, Y | x ~ N(m1(x), s(x)^2); for x >= 0.5, an equal
+mixture of N(m1(x), s(x)^2) and N(m2(x), s(x)^2), with m1(x) = 10x(x-0.5)(1.5-x),
+m2(x) = 10x(x-0.5)(0.8-x) and s(x) = 0.3(1.3-x).) The agent is not told any of this. We ran
+
+```
+/adr:adr examples/branched.csv -y y --budget 15
+```
+
+with Claude Opus 5.5; the output is in [examples/example_run](examples/example_run). The agent
+stopped after 3.9 minutes (cost 0.29 USD). From its [notes](examples/example_run/notes.md): it saw
+"one noisy trunk curve for x < ~0.6 [...], then [...] two roughly equal-weight branches",
+compared three families of models by 5-fold cross-validation, and chose a mixture of two normal
+distributions that share a polynomial mean until a smooth split point, estimated at x = 0.63:
+
+```python
+from adr.dist import Mixture, Normal, exp, log, sigmoid, maximum, abs
+
+
+def model(x):
+    t = x[0]
+    z = (t - 0.634068) / 0.087396
+    g = 0.087396 * (maximum(z, 0.0) + log(1.0 + exp(-abs(z))))
+    mu = (((((-47.466309) * t + 108.978164) * t + -86.112679) * t + 42.877879) * t + -9.908462) * t + -0.003241
+    sd1 = exp(((-1.325764) * t + -0.179717) * t + -0.994224)
+    sd2 = exp(((-0.858171) * t + -0.484573) * t + -0.935113)
+    w = sigmoid(0.114519)
+    return Mixture([w, 1.0 - w], [Normal(mu + -16.056164 * g, sd1), Normal(mu + -25.489746 * g, sd2)])
+```
+
+On the 200 held-out rows:
+
+| model | NLL |
+|---|---|
+| **ADR** | **0.262** |
+| linear Gaussian | 1.090 |
+| normal, no covariates | 1.380 |
+
+and the central 50% and 90% intervals cover 49.5% and 89.0% of the held-out responses. Since the
+data are simulated, the estimate can be compared with the truth: the estimated density follows
+the trunk and the two branches (left), and at x = 0.3, where the law has one mode, and at x = 0.8,
+where it has two, the estimated densities are close to the true ones (right).
+
+![Estimated and true conditional densities](docs/example_fit.png)
+
+To reproduce the evaluation without calling an agent, or to run the agent yourself:
+
+```bash
+adr fit examples/branched.csv -y y --program examples/example_run/model.py --out adr_runs/example
+adr fit examples/branched.csv -y y --budget 15 --out adr_runs/my_example     # a new agent run
+```
+
+`examples/` also contains `zero_inflated.csv` (about half exact zeros, a mixed response) and
+`counts.csv` (negative binomial counts, a discrete response); `make_examples.py` describes all
+three datasets.
+
 ## Command line: first `adr inspect`, then `adr fit`
 
 ```bash
@@ -165,14 +228,14 @@ In the output directory:
 `adr fit` saves the estimate in its output directory (`--out`, by default
 `adr_runs/<data>-<time>`): the program `model.py`, and `run.json` with the order of the
 covariates, the response type and the evaluation. `adr.load` reads this directory and gives you
-an object to use the estimate, without running the agent again. The examples below use the run
-of the example data (`--out adr_runs/example`, see [Example](#example)).
+an object to use the estimate, without running the agent again. The outputs below are those of
+the [example](#example).
 
 **Load the estimate and look at it.**
 
 ```python
 import adr
-fit = adr.load("adr_runs/example")   # the output directory of `adr fit`
+fit = adr.load("examples/example_run")   # the output directory of `adr fit`
 print(fit)
 ```
 
@@ -180,34 +243,27 @@ print(fit)
 ADR estimate of y given 1 covariate (examples/branched.csv)
   covariates: x[0] = x
   response type: continuous
-  held-out NLL: 0.2443 (normal, no covariates: 1.3795; linear Gaussian: 1.0903)
+  held-out NLL: 0.2616 (normal, no covariates: 1.3795; linear Gaussian: 1.0903)
   program (model.py):
-
-    from adr.dist import Normal, Mixture, maximum
-
-    def model(x):
-        t = x[0]
-        up = ((-9.911676 * t + 19.820231) * t - 7.408399) * t + 0.001434
-        lo = up - 8.394843 * maximum(t - 0.352661, 0.0) ** 2
-        sd = maximum(0.400441 - 0.319172 * t, 0.02)
-        return Mixture([0.5, 0.5], [Normal(up, sd), Normal(lo, sd)])
+    ...
 ```
 
 **The estimated distribution at given values of the covariates.** Pass the covariates by
 name, as in the csv:
 
 ```python
-d = fit.distribution({"x": 0.8})
-print(d)
+print(fit.distribution({"x": 0.3}))
+print(fit.distribution({"x": 0.8}))
 ```
 
 ```
-Mixture(weights=[0.5, 0.5]; Normal(loc=1.685, scale=0.1451), Normal(loc=0.004974, scale=0.1451))
+Mixture(weights=[0.5286, 0.4714]; Normal(loc=-0.7048, scale=0.3112), Normal(loc=-0.7226, scale=0.3142))
+Mixture(weights=[0.5286, 0.4714]; Normal(loc=1.646, scale=0.1372), Normal(loc=-0.03464, scale=0.1538))
 ```
 
-that is, at x = 0.8 the estimated law of y is an equal mixture of two normal distributions
-centered at 1.69 and 0.00. To plot the estimated conditional densities at some values of the
-covariates:
+At x = 0.3 the two components almost coincide (one mode near -0.71); at x = 0.8 they are
+centered at 1.65 and -0.03, the two branches. To plot the estimated conditional densities at
+some values of the covariates:
 
 ```python
 fit.plot([{"x": 0.3}, {"x": 0.8}])
@@ -219,8 +275,9 @@ fit.plot([{"x": 0.3}, {"x": 0.8}])
 
 ```python
 import numpy as np
-d.cdf(1.0)                                   # P(Y <= 1 | x = 0.8): 0.50
-fit.quantile({"x": 0.8}, [0.1, 0.5, 0.9])    # conditional quantiles: -0.12, 0.84, 1.81
+d = fit.distribution({"x": 0.8})
+d.cdf(1.0)                                   # P(Y <= 1 | x = 0.8): 0.47
+fit.quantile({"x": 0.8}, [0.1, 0.5, 0.9])    # conditional quantiles: -0.16, 1.43, 1.77
 d.sample(np.random.default_rng(0), 1000)     # 1000 simulated responses at x = 0.8
 d.logpdf(np.array([1.7]))                    # log density at y = 1.7
 ```
@@ -270,21 +327,6 @@ response, `fit.plot` draws the probabilities P(Y = y | x).
 - **Requirements.** Python 3.10 or later, and Claude Code (the `claude` command) logged in or
   with an `ANTHROPIC_API_KEY`. Covariates must be numeric (encode categories as 0/1
   indicators); mixed and discrete responses must be univariate.
-
-## Example
-
-`examples/` contains three simulated datasets (`make_examples.py` describes them):
-`branched.csv`, the continuous design of the paper, whose conditional law changes from one to two
-branches at x = 0.5; `zero_inflated.csv`, with about half exact zeros; and `counts.csv`, negative
-binomial counts. To check the installation without calling an agent:
-
-```bash
-adr fit examples/branched.csv -y y --program examples/branched_program.py --out adr_runs/example
-adr fit examples/zero_inflated.csv -y y --mixed --program examples/zero_inflated_program.py --out adr_runs/example_mixed
-adr fit examples/counts.csv -y y --discrete --program examples/counts_program.py --out adr_runs/example_counts
-```
-
-and, to run the agent, drop `--program`.
 
 ## Citation
 

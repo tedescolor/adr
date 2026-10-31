@@ -178,3 +178,10 @@ def test_printing_and_plotting(tmp_path):
     q = fit.quantile({"x": 0.8}, [0.1, 0.5, 0.9])
     assert np.all(np.diff(q) > 0)
     fit.plot([{"x": 0.3}, {"x": 0.8}])
+
+
+def test_example_run_loads_and_matches_its_report():
+    fit = adr.load(EX / "example_run")
+    df = pd.read_csv(DATA)
+    assert np.all(np.isfinite(fit.logpdf(df.head(50))))
+    assert abs(fit.info["evaluation"]["nll"] - 0.2616) < 1e-3

@@ -1,0 +1,53 @@
+{
+ "data": "examples/branched.csv",
+ "response": [
+  "y"
+ ],
+ "covariates": [
+  "x"
+ ],
+ "n_train": 800,
+ "n_test": 200,
+ "budget_min": 15,
+ "seed": 0,
+ "keep_names": false,
+ "domain": [
+  [
+   0.001414,
+   0.999783
+  ]
+ ],
+ "agent": {
+  "status": "finished",
+  "minutes": 3.9,
+  "model": "claude-opus-5-5",
+  "attempts": 1,
+  "errors": [],
+  "num_turns": 11,
+  "usage": {
+   "input_tokens": 18,
+   "cache_creation_input_tokens": 15351,
+   "cache_read_input_tokens": 117949,
+   "output_tokens": 7188
+  },
+  "cost_usd": 0.2902,
+  "final_message": "`model.py` passes the contract check and `notes.md` is written, ending with `expected_nll: 0.215`.\n\n**What the data looks like:** for x below about 0.6, y follows a single noisy curve, and the noise is larger at small x. After that it splits into two branches of roughly equal weight. One rises to about 2.5 at x = 1 and the other falls to about \u22121.\n\n**Final program:** a mixture of two Normals with a constant weight.\n- **Shared curve:** a degree-5 polynomial in x.\n- **Branch offset:** each component adds its own multiple of a smooth ramp that starts at x \u2248 0.63, with a fitted width of 0.087. Below that point both components sit on the same curve; above it they separate into the two branches.\n- **Spread:** each component's log standard deviation is a quadratic in x.\n- **Size:** 21 constants in total (20 fitted parameters plus a few fixed literals like 0.0 and 1.0).\n\n**Validation:** 5-fold cross-validation, refitting by maximum likelihood with random restarts in every fold.\n- I compared it with two independent Normal branches (polynomial means, weight varying with x), which scored 0.214\u20130.220 depending on polynomial degree.\n- The chosen model scored 0.2107. Its NLL on the training data is 0.186.\n- Swapping in Student-t components gave 0.2097, but the fitted degrees of freedom went to about 1800, which is effectively Normal. I treated that difference as noise and kept the Normal version.\n\n**expected_nll: 0.215.** I set it a little above the cross-validation score to allow for having chosen the model on that same score."
+ },
+ "audit": [],
+ "contract": "ok",
+ "evaluation": {
+  "nll": 0.26157020623483557,
+  "reference": {
+   "normal, no covariates": 1.3795179188279887,
+   "linear Gaussian": 1.090332173824729
+  },
+  "coverage": {
+   "50": 0.495,
+   "90": 0.89
+  }
+ },
+ "figures": [
+  "calibration.png",
+  "density.png"
+ ]
+}
