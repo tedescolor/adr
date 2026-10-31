@@ -246,9 +246,13 @@ def report(run_dir):
           else "# no program", "```"]
     if (run_dir / "notes.md").exists():
         L += ["", "## Notes of the agent", "", (run_dir / "notes.md").read_text().strip()]
+    ex = "{" + ", ".join(f'"{c}": ...' for c in info["covariates"][:3]) + (", ..." if len(info["covariates"]) > 3 else "") + "}"
     L += ["", "## Using the estimate", "", "```python", "import adr",
-          f'fit = adr.load("{run_dir}")', "d = fit.distribution(row)   # row: dict or pandas Series with the covariates",
-          "d.logpdf(y); d.cdf(y); d.ppf(0.9); d.sample(rng, 100)", "```", "",
+          f'fit = adr.load("{run_dir}")   # this directory', "print(fit)                     # summary and program",
+          f"d = fit.distribution({ex})   # covariates by name",
+          "print(d)                       # the estimated distribution at these covariates",
+          "d.cdf(y); d.ppf(0.9); d.sample(rng, 100)",
+          f"fit.plot([{ex}, ...])   # conditional densities at some covariate values", "```", "",
           "Another run on the same data may return a different program. "
           "Method: Tedesco and Finazzi, *Agentic Distributional Regression*, arXiv:2610.37611."]
     (run_dir / "report.md").write_text("\n".join(L) + "\n")
