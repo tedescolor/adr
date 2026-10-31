@@ -222,7 +222,8 @@ def report(run_dir):
             f"- status: {s.get('status')}, after {s.get('minutes')} minutes and {s.get('num_turns')} turns",
             f"- cost reported by Claude Code: {s.get('cost_usd')} USD"] if s.get("model")
            else [f"- {s.get('status')}"]),
-         f"- output contract: {'satisfied' if info['contract'] == 'ok' else 'NOT satisfied: ' + '; '.join(info['contract'])}",
+         f"- output contract (at most {info.get('max_constants', 80)} constants and {info.get('max_nodes', 500)} syntax-tree nodes): "
+         f"{'satisfied' if info['contract'] == 'ok' else 'NOT satisfied: ' + '; '.join(info['contract'])}",
          f"- audit flags: {len(info['audit'])}" + ("" if not info["audit"] else
                                                    " (read `task/agent_stream.jsonl` to judge them)")]
     L += [f"  - {a}" for a in info["audit"][:20]]

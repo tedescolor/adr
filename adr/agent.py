@@ -33,7 +33,7 @@ _COMMON = """
 **Contract** (read `adr/dist.py` and `adr/contract.py`):
 - `model.py` imports only from `adr.dist` and `math`; `model` is a pure function with its
   constants written in as numbers;
-- at most {max_literals} constants and 500 AST nodes. Constants are counted as: every
+- at most {max_literals} constants and {max_nodes} AST nodes. Constants are counted as: every
   numeric or boolean literal and every use of `pi` or `e`; integer column indices such as
   the 3 in `x[3]` are not counted. String constants are not allowed (except docstrings);
 - no loops, comprehensions, dicts or sets; no list/tuple literal longer than 6;
@@ -140,7 +140,8 @@ MAX_ATTEMPTS = 20
 
 
 def prepare_task(workdir, X, y, max_literals=80, python=sys.executable, budget_min=60,
-                 domain=None, column_names=None, mode="continuous", atoms=(), support=None):
+                 domain=None, column_names=None, mode="continuous", atoms=(), support=None,
+                 max_nodes=500):
     """Write data.csv, the library, TASK.md and (optionally) domain.csv into workdir.
 
     X: (n, d) covariates; y: (n,) or (n, 2) response. domain: (d, 2) array of [min, max] per
@@ -162,8 +163,11 @@ def prepare_task(workdir, X, y, max_literals=80, python=sys.executable, budget_m
     lib = workdir / "adr"
     lib.mkdir(exist_ok=True)
     if mode == "continuous":
-        for f in ("dist.py", "contract.py"):
-            shutil.copy(HERE / "_paper" / f, lib / f)
+        # the library and contract of the paper; with a non-default size limit, the extended
+        # contract (same rules, configurable limit) replaces the paper's one
+        shutil.copy(HERE / "_paper" / "dist.py", lib / "dist.py")
+        shutil.copy(HERE / ("_paper/contract.py" if max_nodes == 500 else "contract.py"),
+                    lib / "contract.py")
     else:
         if bivariate:
             raise ValueError("mixed and discrete responses must be univariate")
@@ -175,6 +179,8 @@ def prepare_task(workdir, X, y, max_literals=80, python=sys.executable, budget_m
     (lib / "__init__.py").write_text("")
     check = (f"{python} -m adr.contract model.py --features {X.shape[1]}"
              + (" --ydim 2" if bivariate else "") + f" --max-literals {max_literals} --data data.csv")
+    if max_nodes != 500:
+        check += f" --max-nodes {max_nodes}"
     if mode == "mixed":
         check += " --mode mixed --atoms " + " ".join(f"{a:g}" for a in atoms)
     elif mode == "discrete":
@@ -187,7 +193,7 @@ def prepare_task(workdir, X, y, max_literals=80, python=sys.executable, budget_m
     task = (TASK_BIVARIATE if bivariate else TASK_UNIVARIATE).format(
         n=len(y), d=X.shape[1], covs=("1 covariate `x0`" if X.shape[1] == 1 else
             f"{X.shape[1]} covariates `x0`..`x{X.shape[1] - 1}`"), max_literals=max_literals,
-        python=python, budget=budget_min, check=check)
+        max_nodes=max_nodes, python=python, budget=budget_min, check=check)
     if mode != "continuous":
         start = task.index("**How you are judged.**")
         end = task.index("\n**Contract**")

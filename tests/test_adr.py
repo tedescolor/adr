@@ -185,3 +185,16 @@ def test_example_run_loads_and_matches_its_report():
     df = pd.read_csv(DATA)
     assert np.all(np.isfinite(fit.logpdf(df.head(50))))
     assert abs(fit.info["evaluation"]["nll"] - 0.2616) < 1e-3
+
+
+def test_size_limits_are_configurable(tmp_path):
+    X = pd.read_csv(DATA)[["x"]].to_numpy()
+    assert check(PROGRAM, 1, 1, 80, xs=X) == []
+    assert any("too many numeric literals" in p for p in check(PROGRAM, 1, 1, 5, xs=X))
+    assert any("program too large" in p for p in check(PROGRAM, 1, 1, 80, xs=X, max_nodes=40))
+    y = pd.read_csv(DATA)["y"].to_numpy()
+    d = agent.prepare_task(tmp_path / "small", X, y, max_literals=20, max_nodes=200)
+    task = (d / "TASK.md").read_text()
+    assert "at most 20 constants and 200 AST nodes" in task and "--max-nodes 200" in task
+    d = agent.prepare_task(tmp_path / "default", X, y)
+    assert (d / "adr" / "contract.py").read_bytes() == (ROOT / "adr" / "_paper" / "contract.py").read_bytes()

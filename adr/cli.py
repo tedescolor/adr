@@ -178,10 +178,11 @@ def fit(a):
                 if neutral else out / "task")
     task = agent.prepare_task(task_dir, Xtr, ytr, a.max_literals, sys.executable, a.budget,
                               domain, cov + a.response if a.keep_names else None,
-                              mode, atoms, support)
+                              mode, atoms, support, a.max_nodes)
     info = {"data": str(a.data), "response": a.response, "covariates": cov,
             "n_train": int(len(ytr)), "n_test": 0 if yte is None else int(len(yte)),
             "budget_min": a.budget, "seed": a.seed, "keep_names": a.keep_names,
+            "max_constants": a.max_literals, "max_nodes": a.max_nodes,
             "domain": None if domain is None else domain.tolist(), "mode": mode,
             "atoms": atoms, "support": None if support is None else support.spec(),
             "support_text": None if support is None else support.describe()}
@@ -206,7 +207,8 @@ def fit(a):
     if prog.exists():
         info["contract"] = check(prog, Xtr.shape[1], 1 if ytr.ndim == 1 else 2, a.max_literals,
                                  xs=Xtr, domain=None if domain is None else (domain[:, 0], domain[:, 1]),
-                                 mode=mode, atoms=atoms, support=support, ys=ytr) or "ok"
+                                 mode=mode, atoms=atoms, support=support, ys=ytr,
+                                 max_nodes=a.max_nodes) or "ok"
     else:
         info["contract"] = ["no model.py written"]
     for f in ("model.py", "notes.md"):
@@ -255,7 +257,10 @@ def main(argv=None):
     f.add_argument("--test", help="separate csv of held-out rows (instead of --test-fraction)")
     f.add_argument("--out", help="output directory (default adr_runs/<data>-<time>)")
     f.add_argument("--seed", type=int, default=0, help="seed of the train/held-out split")
-    f.add_argument("--max-literals", type=int, default=80, help="contract: maximum constants")
+    f.add_argument("--max-constants", "--max-literals", dest="max_literals", type=int, default=80,
+                   help="contract: maximum number of numerical constants in the program (80)")
+    f.add_argument("--max-nodes", type=int, default=500,
+                   help="contract: maximum size of the program, in syntax-tree nodes (500)")
     f.add_argument("--keep-names", action="store_true",
                    help="tell the agent the column names (default: anonymous columns)")
     f.add_argument("--sandbox", action="store_true",
@@ -286,7 +291,8 @@ def main(argv=None):
     c.add_argument("--data", required=True)
     c.add_argument("--response", "-y", nargs="+", required=True)
     c.add_argument("--covariates", "-x", nargs="+", default=None)
-    c.add_argument("--max-literals", type=int, default=80)
+    c.add_argument("--max-constants", "--max-literals", dest="max_literals", type=int, default=80)
+    c.add_argument("--max-nodes", type=int, default=500)
     a = ap.parse_args(argv)
     if a.cmd == "fit":
         fit(a)
@@ -299,7 +305,7 @@ def main(argv=None):
         from adr.contract import check
         X, y, _ = read_data(a.data, a.response, a.covariates)
         probs = check(a.model, X.shape[1], 1 if y.ndim == 1 else 2, a.max_literals, xs=X,
-                      domain=(X.min(0), X.max(0)))
+                      domain=(X.min(0), X.max(0)), max_nodes=a.max_nodes)
         print("OK: contract satisfied" if not probs else "REJECTED:\n  " + "\n  ".join(probs))
         sys.exit(1 if probs else 0)
 

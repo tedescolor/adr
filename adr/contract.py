@@ -87,7 +87,7 @@ def docstrings(tree):
     return out
 
 
-def check_source(src, max_literals=MAX_NUMERIC_LITERALS):
+def check_source(src, max_literals=MAX_NUMERIC_LITERALS, max_nodes=MAX_AST_NODES):
     problems = []
     try:
         tree = ast.parse(src)
@@ -95,8 +95,8 @@ def check_source(src, max_literals=MAX_NUMERIC_LITERALS):
         return [f"syntax error: {e}"]
 
     nodes = list(ast.walk(tree))
-    if len(nodes) > MAX_AST_NODES:
-        problems.append(f"program too large: {len(nodes)} AST nodes > {MAX_AST_NODES}")
+    if len(nodes) > max_nodes:
+        problems.append(f"program too large: {len(nodes)} AST nodes > {max_nodes}")
     n_lit = count_literals(tree)
     if n_lit > max_literals:
         problems.append(f"too many numeric literals: {n_lit} > {max_literals}")
@@ -184,9 +184,9 @@ def valid_at(model, x, rng, y_dim, mode="continuous", atoms=(), support=None):
 
 
 def check(path, n_features=1, y_dim=1, max_literals=MAX_NUMERIC_LITERALS, xs=None, domain=None,
-          mode="continuous", atoms=(), support=None, ys=None):
+          mode="continuous", atoms=(), support=None, ys=None, max_nodes=MAX_AST_NODES):
     with open(path) as f:
-        problems = check_source(f.read(), max_literals)
+        problems = check_source(f.read(), max_literals, max_nodes)
     if problems:
         return problems
     model = load_model(path)
@@ -231,6 +231,7 @@ if __name__ == "__main__":
     ap.add_argument("--mode", choices=["continuous", "mixed", "discrete"], default="continuous")
     ap.add_argument("--atoms", type=float, nargs="+", default=())
     ap.add_argument("--support", default=None)
+    ap.add_argument("--max-nodes", type=int, default=MAX_AST_NODES)
     a = ap.parse_args()
     xs = ys = None
     support = None
@@ -249,6 +250,6 @@ if __name__ == "__main__":
         dm = pd.read_csv(a.domain)
         domain = (dm["min"].to_numpy(float), dm["max"].to_numpy(float))
     probs = check(a.path, a.features, a.ydim, a.max_literals, xs, domain, a.mode, a.atoms,
-                  support, ys)
+                  support, ys, a.max_nodes)
     print("OK: contract satisfied" if not probs else "REJECTED:\n  " + "\n  ".join(probs))
     sys.exit(1 if probs else 0)

@@ -31,7 +31,8 @@ be given in three ways:
 
 Options passed through unchanged: `--budget MIN` (default 60), `--model NAME` (default
 `claude-opus-5-5`), `--test-fraction F` (default 0.2), `--test FILE`, `--keep-names`,
-`--sandbox`, `--seed N`, and the response-type options `--mixed`, `--atoms A ...`,
+`--sandbox`, `--seed N`, `--no-domain`, the size limits `--max-constants K` (default 80)
+and `--max-nodes N` (default 500), and the response-type options `--mixed`, `--atoms A ...`,
 `--discrete`, `--support SPEC`.
 
 Read the csv header (`head -1`) to check that the columns exist. Before starting, state which
