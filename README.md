@@ -106,9 +106,10 @@ On the 200 held-out rows:
 | normal, no covariates | 1.380 |
 
 and the central 50% and 90% intervals cover 49.5% and 89.0% of the held-out responses. Since the
-data are simulated, the estimate can be compared with the truth: the estimated density follows
-the trunk and the two branches (left), and at x = 0.3, where the law has one mode, and at x = 0.8,
-where it has two, the estimated densities are close to the true ones (right).
+data are simulated, the estimate can also be compared with the truth. Responses simulated from
+the estimate, one at each observed x (center), look like the observed data (left); and at
+x = 0.3, where the law has one mode, and at x = 0.8, where it has two (dashed lines), the
+estimated densities are close to the true ones (right).
 
 ![Estimated and true conditional densities](docs/example_fit.png)
 

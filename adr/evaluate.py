@@ -168,8 +168,8 @@ def plots(run_dir, model, X, y, Xte, yte, pit, cov_names, resp_names, seed=0,
             gy = np.linspace(y.min() - pad, y.max() + pad, 250)
             vals = np.array([np.exp(np.asarray(model(np.array([g])).logpdf(gy))) for g in gx])
             vals = vals / np.maximum(vals.max(axis=1, keepdims=True), 1e-300)
-            title = ("Continuous part of the estimated density" if mode == "mixed"
-                     else "Estimated conditional density") + "\n(scaled to 1 at each x)"
+            title = ("Continuous part of the estimated conditional density" if mode == "mixed"
+                     else "Estimated conditional density of y given x") + "\n(darker = more probable at that x)"
         panels = 2 if mode == "mixed" else 1
         fig, axes = plt.subplots(panels, 1, figsize=(6, 4 if panels == 1 else 6), squeeze=False,
                                  sharex=True, layout="constrained",

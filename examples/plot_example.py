@@ -27,25 +27,32 @@ def true_density(y, x):
 fig, ax = plt.subplots(figsize=(6, 3.6), layout="constrained")
 ax.scatter(df.x, df.y, s=5, color="0.25", alpha=.5, linewidths=0)
 ax.set(xlabel="x", ylabel="y", title="examples/branched.csv: 1,000 observations")
+ax.spines[["top", "right"]].set_visible(False)
 fig.savefig(ROOT / "docs" / "example_data.png", dpi=150)
 plt.close(fig)
 
-# the estimate against the truth
-fig, axes = plt.subplots(1, 2, figsize=(11, 3.8), layout="constrained",
-                         gridspec_kw={"width_ratios": [1.15, 1]})
-gx = np.linspace(df.x.min(), df.x.max(), 150)
-gy = np.linspace(df.y.min() - .3, df.y.max() + .3, 250)
-dens = np.array([np.exp(np.asarray(fit.distribution({"x": g}).logpdf(gy))) for g in gx])
-axes[0].pcolormesh(gx, gy, (dens / dens.max(axis=1, keepdims=True)).T, cmap="Blues", shading="auto")
-axes[0].scatter(df.x, df.y, s=3, color="black", alpha=.35, linewidths=0)
-axes[0].set(xlabel="x", ylabel="y", title="Estimated conditional density (scaled at each x) and data")
-yy = np.linspace(-2.2, 2.6, 600)
-for k, x0 in enumerate([0.3, 0.8]):
-    axes[1].plot(yy, true_density(yy, x0), color=f"C{k}", lw=2.2, alpha=.45, label=f"true, x = {x0}")
-    axes[1].plot(yy, np.exp(fit.distribution({"x": x0}).logpdf(yy)), color=f"C{k}", lw=1.4, ls="--",
+# the estimate against the truth: data, draws from the estimate at the same x, and densities
+plt.rcParams.update({"axes.spines.top": False, "axes.spines.right": False, "font.size": 10})
+fig, axes = plt.subplots(1, 3, figsize=(13, 3.9), layout="constrained",
+                         gridspec_kw={"width_ratios": [1, 1, 1.1]})
+rng = np.random.default_rng(1)
+sim = np.array([float(fit.distribution({"x": v}).sample(rng, 1)[0]) for v in df.x])
+cols = {0.3: "#2a78d6", 0.8: "#d55181"}
+for ax, yv, title in zip(axes[:2], (df.y, sim), ("Observed data", "Simulated from the ADR estimate")):
+    ax.scatter(df.x, yv, s=5, color="0.3", alpha=.45, linewidths=0)
+    for x0, c in cols.items():
+        ax.axvline(x0, color=c, ls="--", lw=1.2)
+    ax.set(xlabel="x", ylabel="y", title=title, ylim=(-2, 3))
+axes[1].sharey(axes[0])
+yy = np.linspace(-2, 3, 600)
+for x0, c in cols.items():
+    axes[2].plot(yy, true_density(yy, x0), color=c, lw=4, alpha=.3, label=f"true, x = {x0}")
+    axes[2].plot(yy, np.exp(fit.distribution({"x": x0}).logpdf(yy)), color=c, lw=1.6,
                  label=f"ADR, x = {x0}")
-axes[1].set(xlabel="y", ylabel="conditional density", title="True and estimated densities")
-axes[1].legend(frameon=False, fontsize=8)
+axes[2].set(xlabel="y", ylabel="conditional density of y given x",
+            title="True and estimated densities")
+axes[2].set_ylim(0, 2.0)
+axes[2].legend(frameon=False, fontsize=9, ncol=2, loc="upper center")
 fig.savefig(ROOT / "docs" / "example_fit.png", dpi=150)
 plt.close(fig)
 print("wrote docs/example_data.png and docs/example_fit.png")
