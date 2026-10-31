@@ -40,8 +40,16 @@ Then, in any project:
 without flags also works: the last column name is the response and the names before it are the
 covariates (`/adr:adr data.csv age education income`). You can also write it in words:
 `/adr:adr data.csv predict income from age and education`.
-Claude prepares the task, starts the isolated agent in the background, and, when it has
-finished, shows you the held-out evaluation and explains the returned program.
+
+What happens:
+
+1. **Inspection.** Claude first runs `adr inspect` on your data (see below) and tells you what
+   it found: problems with the covariates, and whether the response is **continuous**, **mixed**
+   (with point masses, such as many exact zeros) or **discrete** (such as counts). It asks you
+   when something cannot be decided from the data, such as the maximum of a discrete response.
+2. **Run.** It prepares the task and starts the isolated agent in the background.
+3. **Report.** When the agent has finished, it shows you the held-out evaluation and explains
+   the returned program.
 
 ## Or: give this repository to Claude
 
@@ -52,10 +60,42 @@ Without installing anything, you can ask Claude Code something like:
 
 Claude clones the repository and follows [CLAUDE.md](CLAUDE.md).
 
-## Command line
+## Command line: first `adr inspect`, then `adr fit`
 
 ```bash
 pip install git+https://github.com/tedescolor/adr
+```
+
+**Step 1: inspect the data.** Always start with
+
+```bash
+adr inspect data.csv -y income [-x age education]
+```
+
+It describes the covariates (non-numeric, binary, constant or incomplete columns), analyses
+the response, suggests the **response type**, continuous, mixed with given atoms, or discrete
+on a given support (see [below](#responses-with-point-masses-or-discrete-values)), and prints
+the `adr fit` command to run. For example, on `examples/zero_inflated.csv`:
+
+```
+examples/zero_inflated.csv: 1000 rows, 2 columns
+
+Covariates:
+  x: numeric, 999 distinct values, range [8.9e-05, 0.999676]
+
+Response y: 493 distinct values in 1000 rows, range [0, 18.9085], 50.8% of the rows share their value with another row
+  most frequent values: 0 (508, 50.8%)
+
+Suggested response type: MIXED with point masses at 0
+  - 50.8% of the responses are exactly equal to 0; the other values are almost all distinct.
+
+Suggested command:
+  adr fit examples/zero_inflated.csv -y y --mixed
+```
+
+**Step 2: fit.** Run the suggested command, adding the options you need:
+
+```bash
 adr fit data.csv --response income [--covariates age education] --budget 60 --model claude-opus-5-5
 ```
 
@@ -75,15 +115,14 @@ adr fit data.csv --response income [--covariates age education] --budget 60 --mo
 | `--dry-run` | prepare the task without starting the agent |
 | `--program FILE` | evaluate an existing `model.py` instead of running an agent |
 
-`adr inspect data.csv -y income` describes the data and suggests the response type (below),
-`adr check model.py --data data.csv -y income` checks a program against the output contract, and
-`adr report RUN_DIR` rewrites a report.
+Other commands: `adr check model.py --data data.csv -y income` checks a program against the
+output contract, and `adr report RUN_DIR` rewrites a report.
 
 ## Responses with point masses or discrete values
 
 The paper studies continuous responses, whose conditional law has a density. Two extensions,
-not studied in the paper, cover other common cases. Run `adr inspect` first: it suggests the
-type and the options.
+not studied in the paper, cover other common cases. `adr inspect` tells you which case applies
+and which options to use.
 
 - **Mixed** (`--mixed`): a continuous response with **point masses**, for example many exact
   zeros (expenditure, rainfall, burned area) or values at a bound (0% and 100%). The atoms are
