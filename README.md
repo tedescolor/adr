@@ -70,11 +70,41 @@ adr fit data.csv --response income [--covariates age education] --budget 60 --mo
 | `--sandbox` | run the agent's shell in the Claude Code sandbox, without network (needs bubblewrap on Linux) |
 | `--no-domain` | do not require a valid distribution on the whole box of observed covariate values |
 | `--out` | output directory (`adr_runs/<data>-<time>`) |
+| `--mixed`, `--atoms A ...` | the response has point masses (see below) |
+| `--discrete`, `--support SPEC` | the response is discrete (see below) |
 | `--dry-run` | prepare the task without starting the agent |
 | `--program FILE` | evaluate an existing `model.py` instead of running an agent |
 
+`adr inspect data.csv -y income` describes the data and suggests the response type (below),
 `adr check model.py --data data.csv -y income` checks a program against the output contract, and
 `adr report RUN_DIR` rewrites a report.
+
+## Responses with point masses or discrete values
+
+The paper studies continuous responses, whose conditional law has a density. Two extensions,
+not studied in the paper, cover other common cases. Run `adr inspect` first: it suggests the
+type and the options.
+
+- **Mixed** (`--mixed`): a continuous response with **point masses**, for example many exact
+  zeros (expenditure, rainfall, burned area) or values at a bound (0% and 100%). The atoms are
+  the values that occur in at least 1% of the training rows (and at least 5 times), or those
+  given with `--atoms 0 100`. The agent can use `PointMass(a)` in a `Mixture`, with weights
+  that depend on the covariates. The score is -log P(Y = a | x) at an atom and -log of the
+  density of the continuous part elsewhere.
+- **Discrete** (`--discrete`): a response that takes values on a fixed set, such as counts. The
+  support can be infinite (`naturals` = 0, 1, 2, ...; `integers`; `0:inf:0.5`) or finite (`1:5`
+  for a score from 1 to 5; `0:10` for successes out of 10; an explicit list `0,1,2,5`). Since the
+  data cannot tell whether the largest observed value is also the largest possible one,
+  `inspect` suggests an unbounded support and asks you to give a finite one when there is a
+  maximum. The agent can use `Poisson`, `NegativeBinomial`, `Binomial`, `BetaBinomial`,
+  `Categorical`, `PointMass` and `Shift`, and mixtures of these; the score is -log P(Y = y | x).
+
+In both cases the atoms or the support are fixed **before** the fit and are the same for all
+the models compared, so that the scores are comparable; the agent cannot add point masses
+elsewhere. The references in the report are adapted to the type (logistic atom probabilities
+and a Gaussian continuous part; a negative binomial law or regression for counts), and the
+calibration uses the randomized PIT. Without these options, the agent receives exactly the
+library and the contract of the paper.
 
 ## What you get
 
@@ -133,20 +163,23 @@ fit.logpdf(test_df)          # log-density of each row of a data frame
 - **Interpretation.** A short formula is easy to read, but it is still a fitted model: check
   it outside the observed covariate range before relying on it there.
 - **Requirements.** Python 3.10 or later, and Claude Code (the `claude` command) logged in or
-  with an `ANTHROPIC_API_KEY`. Responses must be continuous; covariates must be numeric (encode
-  categories as 0/1 indicators).
+  with an `ANTHROPIC_API_KEY`. Covariates must be numeric (encode categories as 0/1
+  indicators); mixed and discrete responses must be univariate.
 
 ## Example
 
-`examples/branched.csv` contains 1,000 draws from the univariate design of the paper, whose
-conditional law changes from one to two branches at x = 0.5. To check the installation without
-calling an agent:
+`examples/` contains three simulated datasets (`make_examples.py` describes them):
+`branched.csv`, the continuous design of the paper, whose conditional law changes from one to two
+branches at x = 0.5; `zero_inflated.csv`, with about half exact zeros; and `counts.csv`, negative
+binomial counts. To check the installation without calling an agent:
 
 ```bash
 adr fit examples/branched.csv -y y --program examples/branched_program.py --out adr_runs/example
+adr fit examples/zero_inflated.csv -y y --mixed --program examples/zero_inflated_program.py --out adr_runs/example_mixed
+adr fit examples/counts.csv -y y --discrete --program examples/counts_program.py --out adr_runs/example_counts
 ```
 
-and, to run the agent on it, drop `--program`.
+and, to run the agent, drop `--program`.
 
 ## Citation
 

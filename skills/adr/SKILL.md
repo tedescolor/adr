@@ -31,7 +31,8 @@ be given in three ways:
 
 Options passed through unchanged: `--budget MIN` (default 60), `--model NAME` (default
 `claude-opus-5-5`), `--test-fraction F` (default 0.2), `--test FILE`, `--keep-names`,
-`--sandbox`, `--seed N`.
+`--sandbox`, `--seed N`, and the response-type options `--mixed`, `--atoms A ...`,
+`--discrete`, `--support SPEC`.
 
 Read the csv header (`head -1`) to check that the columns exist. Before starting, state which
 column is the response and which are the covariates. If this is ambiguous, show the header
@@ -47,7 +48,28 @@ command -v claude >/dev/null || echo "MISSING: the claude CLI is needed to start
 The first call creates a Python environment with the `adr` package (a minute or two).
 If `claude` is missing, tell the user to install Claude Code (the `claude` command) and stop.
 
-## 3. Start the run
+## 3. Inspect the data and choose the response type
+
+```bash
+"$PY" -m adr inspect DATA.csv --response RESPONSE [--covariates C1 C2 ...]
+```
+
+Summarize its findings for the user: the covariates (flag non-numeric ones, which must be
+encoded or left out), the response, and the suggested response type:
+
+- **continuous** (the setting of the paper): no extra option;
+- **mixed**, a continuous response with point masses (for example many exact zeros): add
+  `--mixed`; the atoms are those reported (values in at least 1% of the rows) unless the user
+  gave `--atoms`;
+- **discrete**: add `--discrete --support SPEC`. If the suggested support has no upper bound but
+  the response might have a maximum (a score from 1 to 5, successes out of m trials, ...), ask
+  the user whether there is a maximum before starting, and pass a finite support (`a:b`).
+
+If the user already gave a response-type option, keep it, and mention it if `inspect` suggests
+something else. Mixed and discrete responses are an extension beyond the paper, which studies
+continuous responses.
+
+## 4. Start the run
 
 Tell the user, in one or two lines, what will run: the response, the covariates, the model,
 the time budget, the held-out fraction, and that the training data are sent to the Anthropic
@@ -55,18 +77,19 @@ API through Claude Code (in the paper, a run with Claude Opus 5.5 cost about 1 U
 median and at most about 3.5 USD, and took 13 to 18 minutes in median). Then start it **in the background** (it can take up to the time budget):
 
 ```bash
-"$PY" -m adr fit DATA.csv --response RESPONSE [--covariates C1 C2 ...] \
+"$PY" -m adr fit DATA.csv --response RESPONSE [--covariates C1 C2 ...] [TYPE OPTIONS] \
       --budget MIN --model NAME --out adr_runs/NAME_OF_RUN
 ```
 
 Choose `adr_runs/<csv stem>-<response>` as output directory (add a suffix if it exists). Do
 not poll: wait for the background command to finish.
 
-## 4. Report
+## 5. Report
 
 When the command has finished, read `<out>/report.md` and give the user:
 
-- the held-out NLL of ADR next to the two reference models, and the interval coverage;
+- the response type (with the atoms or the support), the held-out NLL of ADR next to the two
+  reference models, and the interval coverage;
 - the returned program, with a plain-language reading of it: which distribution family,
   which covariates enter the location, the scale or the mixture weights, any change of regime
   (in `model.py`, `x[j]` is the j-th covariate, as listed in the report);

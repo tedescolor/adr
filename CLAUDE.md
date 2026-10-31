@@ -16,7 +16,11 @@ data to the agent: that would no longer be ADR.
    once a Python environment with the package (in `~/.adr/venv`) and prints its python. Check
    that the `claude` command exists (`command -v claude`); if not, tell the user that Claude
    Code must be installed.
-3. **Start.** Tell the user in one or two lines what will run (response, covariates, model,
+3. **Response type.** Run `"$PY" -m adr inspect DATA.csv --response Y` and follow
+   `skills/adr/SKILL.md` (section 3): continuous (no option), mixed (`--mixed`, or `--atoms`)
+   or discrete (`--discrete --support SPEC`; ask the user whether the response has a maximum
+   when the suggested support is unbounded).
+4. **Start.** Tell the user in one or two lines what will run (response, covariates, model,
    budget, held-out fraction) and that the training data are sent to the Anthropic API. Then
    run, in the background, from the user's working directory:
 
@@ -25,7 +29,7 @@ data to the agent: that would no longer be ADR.
    ```
 
    Wait for it to finish without polling.
-4. **Report.** Read `<out>/report.md` and present the held-out NLL against the two reference
+5. **Report.** Read `<out>/report.md` and present the held-out NLL against the two reference
    models, the interval coverage, the returned program with a plain-language reading (family;
    covariates in location, scale and mixture weights; changes of regime), the audit flags and
    the contract status, and the location of the files. Mention that another run may give a

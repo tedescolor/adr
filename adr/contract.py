@@ -2,6 +2,13 @@
 
 Usage: python -m adr.contract path/to/model.py [--features D] [--ydim Q] [--max-literals K]
                                                 [--data data.csv] [--domain domain.csv]
+                                                [--mode continuous|mixed|discrete]
+                                                [--atoms A [A ...]] [--support SPEC]
+
+With --mode mixed (point masses at the declared --atoms) or --mode discrete (values in the
+declared --support), the checks use the score of adr.score.loglik instead of the log density:
+draws must have a finite score, a mixed law may put mass only at the declared atoms, a discrete
+law only on the support, and, with --data, every training row must have a finite score.
 
 With --data, the runtime test uses 20 covariate rows of that csv (all columns except
 ``y``/``y*``) instead of random draws from U(-3, 3).
@@ -140,7 +147,7 @@ def domain_points(lo, hi, base, rng):
     return np.asarray(pts)
 
 
-def valid_at(model, x, rng, y_dim):
+def valid_at(model, x, rng, y_dim, mode="continuous", atoms=(), support=None):
     """None if model(x) is a valid distribution with finite log-density at its own samples."""
     try:
         d = model(x)
@@ -153,7 +160,22 @@ def valid_at(model, x, rng, y_dim):
         expected = (5,) if y_dim == 1 else (5, y_dim)
         if ys.shape != expected:
             return f"sample(rng, 5) has shape {ys.shape}, expected {expected}"
-        lp = np.asarray(d.logpdf(ys))
+        if mode == "continuous":
+            lp = np.asarray(d.logpdf(ys))
+        else:
+            from adr.score import loglik
+            lp = loglik(d, ys, mode, atoms, support)
+            if mode == "mixed":
+                from adr.score import TOL
+                a = np.asarray(atoms, dtype=float)
+                more = np.asarray(d.sample(rng, 200), dtype=float)
+                vals, counts = np.unique(more, return_counts=True)
+                extra = [v for v, c in zip(vals, counts) if c > 1 and
+                         not np.any(np.abs(v - a) <= TOL * np.maximum(1, np.abs(a)))]
+                if extra:
+                    return f"point mass at {extra[0]:g}, which is not a declared atom"
+            if mode == "discrete" and not np.all(support.contains(ys)):
+                return "draws outside the declared support"
     except Exception as e:
         return f"sampling or logpdf raised {type(e).__name__}: {e}"
     if lp.shape != (5,) or not np.all(np.isfinite(lp)):
@@ -161,26 +183,37 @@ def valid_at(model, x, rng, y_dim):
     return None
 
 
-def check(path, n_features=1, y_dim=1, max_literals=MAX_NUMERIC_LITERALS, xs=None, domain=None):
+def check(path, n_features=1, y_dim=1, max_literals=MAX_NUMERIC_LITERALS, xs=None, domain=None,
+          mode="continuous", atoms=(), support=None, ys=None):
     with open(path) as f:
         problems = check_source(f.read(), max_literals)
     if problems:
         return problems
     model = load_model(path)
     rng = np.random.default_rng(0)
+    all_xs_full = None if xs is None else np.asarray(xs, dtype=float)
     if xs is None:
         xs = rng.uniform(-3, 3, size=(20, n_features))
     else:
         xs = np.asarray(xs, dtype=float)
         xs = xs[rng.choice(len(xs), size=min(20, len(xs)), replace=False)]
     for x in xs:
-        err = valid_at(model, x, rng, y_dim)
+        err = valid_at(model, x, rng, y_dim, mode, atoms, support)
         if err:
             return [err]
+    if mode != "continuous" and ys is not None and all_xs_full is not None:
+        from adr.score import loglik
+        for i, (x, v) in enumerate(zip(all_xs_full, ys)):
+            try:
+                ok = np.all(np.isfinite(loglik(model(x), [v], mode, atoms, support)))
+            except Exception as e:
+                return [f"training row {i}: {type(e).__name__}: {e}"]
+            if not ok:
+                return [f"training row {i} (y = {v:g}) has probability zero under the model"]
     if domain is not None:
         lo, hi = domain
         for x in domain_points(lo, hi, xs, rng):
-            err = valid_at(model, x, rng, y_dim)
+            err = valid_at(model, x, rng, y_dim, mode, atoms, support)
             if err:
                 shown = ", ".join(f"x{j}={v:.6g}" for j, v in enumerate(x))
                 return [f"in the covariate domain, at ({shown}): {err}"]
@@ -195,17 +228,27 @@ if __name__ == "__main__":
     ap.add_argument("--max-literals", type=int, default=MAX_NUMERIC_LITERALS)
     ap.add_argument("--data", help="csv whose non-y columns supply the test covariates")
     ap.add_argument("--domain", help="csv (column,min,max) giving the box of covariate values")
+    ap.add_argument("--mode", choices=["continuous", "mixed", "discrete"], default="continuous")
+    ap.add_argument("--atoms", type=float, nargs="+", default=())
+    ap.add_argument("--support", default=None)
     a = ap.parse_args()
-    xs = None
+    xs = ys = None
+    support = None
+    if a.support:
+        from adr.score import Support
+        support = Support.parse(a.support)
     if a.data:
         import pandas as pd
         df = pd.read_csv(a.data)
         xs = df[[c for c in df.columns if not c.startswith("y")]].to_numpy()
+        if "y" in df.columns:
+            ys = df["y"].to_numpy(dtype=float)
     domain = None
     if a.domain:
         import pandas as pd
         dm = pd.read_csv(a.domain)
         domain = (dm["min"].to_numpy(float), dm["max"].to_numpy(float))
-    probs = check(a.path, a.features, a.ydim, a.max_literals, xs, domain)
+    probs = check(a.path, a.features, a.ydim, a.max_literals, xs, domain, a.mode, a.atoms,
+                  support, ys)
     print("OK: contract satisfied" if not probs else "REJECTED:\n  " + "\n  ".join(probs))
     sys.exit(1 if probs else 0)

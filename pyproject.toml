@@ -19,4 +19,4 @@ Paper = "https://arxiv.org/abs/2610.37611"
 Replication = "https://github.com/tedescolor/ADR_replication"
 
 [tool.setuptools]
-packages = ["adr"]
+packages = ["adr", "adr._paper"]

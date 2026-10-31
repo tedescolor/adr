@@ -89,6 +89,41 @@ have. Lower is better. Overfitting `data.csv` is your responsibility; how you va
 to you.
 """ + _COMMON
 
+JUDGED_MIXED = """**Response type: continuous with point masses.** `y` can be exactly equal to {atoms}:
+P(Y = a | x) can be positive at these atoms, while all the other values of `y` come from a
+continuous distribution.
+
+**How you are judged.** The mean score on held-out rows from the same distribution, which you
+do not have; lower is better. For a row whose `y` equals one of the atoms, the score is
+-log P(Y = y | x); for any other `y`, it is -log of the density of the continuous part of the
+distribution. `adr.task.loglik(d, y)` computes the log-likelihood used for this score. Build the
+atoms with `PointMass(a)` inside `Mixture` (the weights may depend on x); point masses at other
+values are not allowed. Overfitting `data.csv` is your responsibility; how you validate is up to
+you.
+"""
+
+JUDGED_DISCRETE = """**Response type: discrete.** `y` takes values in {support}.
+
+**How you are judged.** The mean of -log P(Y = y | x) on held-out rows from the same
+distribution, which you do not have; lower is better. `adr.task.loglik(d, y)` computes this
+log-likelihood. The distribution must put all its probability on the values above: use the
+discrete families of `adr/dist.py` (`Poisson`, `NegativeBinomial`, `Binomial`, `BetaBinomial`,
+`Categorical`, `PointMass`, `Shift`, and `Mixture` of these). Overfitting `data.csv` is your
+responsibility; how you validate is up to you.
+"""
+
+TASK_SCORE = '''"""The score of this task: ``loglik(d, y)`` is the log-likelihood used to judge model.py."""
+from adr.score import Support, loglik as _loglik
+
+MODE = {mode!r}
+ATOMS = {atoms!r}
+SUPPORT = {support}
+
+
+def loglik(d, y):
+    return _loglik(d, y, MODE, ATOMS, SUPPORT)
+'''
+
 DOMAIN_TXT = """
 **Covariate domain.** `domain.csv` gives, for each covariate, the smallest and the largest value
 in the full dataset, including the held-out rows on which `model` is scored. Every row on which
@@ -105,12 +140,14 @@ MAX_ATTEMPTS = 20
 
 
 def prepare_task(workdir, X, y, max_literals=80, python=sys.executable, budget_min=60,
-                 domain=None, column_names=None):
+                 domain=None, column_names=None, mode="continuous", atoms=(), support=None):
     """Write data.csv, the library, TASK.md and (optionally) domain.csv into workdir.
 
     X: (n, d) covariates; y: (n,) or (n, 2) response. domain: (d, 2) array of [min, max] per
     covariate, enforced by the contract check. column_names: optional original names
-    (covariates then response), disclosed to the agent only if given."""
+    (covariates then response), disclosed to the agent only if given. mode: response type
+    (continuous, mixed with ``atoms``, or discrete on ``support``, an adr.score.Support); a
+    continuous task receives the library and contract of the paper unchanged."""
     import pandas as pd
     workdir = Path(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
@@ -124,11 +161,24 @@ def prepare_task(workdir, X, y, max_literals=80, python=sys.executable, budget_m
     df.to_csv(workdir / "data.csv", index=False)
     lib = workdir / "adr"
     lib.mkdir(exist_ok=True)
-    for f in ("dist.py", "contract.py"):
-        shutil.copy(HERE / f, lib / f)
+    if mode == "continuous":
+        for f in ("dist.py", "contract.py"):
+            shutil.copy(HERE / "_paper" / f, lib / f)
+    else:
+        if bivariate:
+            raise ValueError("mixed and discrete responses must be univariate")
+        for f in ("dist.py", "contract.py", "score.py"):
+            shutil.copy(HERE / f, lib / f)
+        (lib / "task.py").write_text(TASK_SCORE.format(
+            mode=mode, atoms=[float(a) for a in atoms],
+            support="None" if support is None else f"Support.parse({support.spec()!r})"))
     (lib / "__init__.py").write_text("")
     check = (f"{python} -m adr.contract model.py --features {X.shape[1]}"
              + (" --ydim 2" if bivariate else "") + f" --max-literals {max_literals} --data data.csv")
+    if mode == "mixed":
+        check += " --mode mixed --atoms " + " ".join(f"{a:g}" for a in atoms)
+    elif mode == "discrete":
+        check += f" --mode discrete --support {support.spec()}"
     if domain is not None:
         domain = np.asarray(domain, dtype=float)
         pd.DataFrame({"column": [f"x{j}" for j in range(len(domain))], "min": domain[:, 0],
@@ -138,6 +188,13 @@ def prepare_task(workdir, X, y, max_literals=80, python=sys.executable, budget_m
         n=len(y), d=X.shape[1], covs=("1 covariate `x0`" if X.shape[1] == 1 else
             f"{X.shape[1]} covariates `x0`..`x{X.shape[1] - 1}`"), max_literals=max_literals,
         python=python, budget=budget_min, check=check)
+    if mode != "continuous":
+        start = task.index("**How you are judged.**")
+        end = task.index("\n**Contract**")
+        judged = (JUDGED_MIXED.format(atoms=", ".join(f"{a:g}" for a in atoms)) if mode == "mixed"
+                  else JUDGED_DISCRETE.format(support=support.describe()))
+        task = task[:start] + judged + task[end:]
+        task = task.replace("and a continuous target `y`", "and a target `y`")
     if domain is not None:
         task = task.replace("\n**Rules**", DOMAIN_TXT + "\n**Rules**", 1)
     if column_names is not None:

@@ -14,6 +14,16 @@ Multivariate responses are built from
 
 Shapes: a univariate distribution has ``logpdf(y)`` for y of shape (n,) and ``sample``
 returning (n,); a d-variate one uses (n, d).
+
+Extended library (responses with point masses or discrete values, univariate only):
+- ``logmass(y)``: log of the probability mass P(Y = y) at each point (-inf for continuous laws);
+- ``PointMass(a)``: all the probability at the value a (for example, zero-inflation:
+  ``Mixture([p, 1 - p], [PointMass(0), LogNormal(mu, sigma)])``);
+- discrete families ``Poisson(rate)``, ``NegativeBinomial(mean, size)``,
+  ``Binomial(trials, prob)``, ``BetaBinomial(trials, a, b)`` and ``Categorical(values, probs)``,
+  whose ``logpdf`` and ``logmass`` are the log probability mass function;
+- ``Shift(dist, c)``: the law of Y + c (for example ``Shift(Binomial(4, p), 1)`` on 1..5).
+Without these, the library is the one of the paper (arXiv:2610.37611).
 """
 import numpy as np
 from scipy import stats
@@ -25,6 +35,10 @@ SIGMA_MIN = 1e-6  # lower bound on every scale parameter
 class Distribution:
     def logpdf(self, y):
         raise NotImplementedError
+
+    def logmass(self, y):
+        """Log probability mass P(Y = y); -inf everywhere for a continuous law."""
+        return np.full(np.shape(np.atleast_1d(np.asarray(y, dtype=float))), -np.inf)
 
     def cdf(self, y):
         raise NotImplementedError
@@ -180,6 +194,12 @@ class Mixture(Distribution):
         terms = [lw[k] + c.logpdf(y) for k, c in enumerate(self.components)]
         return logsumexp(np.stack(np.broadcast_arrays(*terms)), axis=0)
 
+    def logmass(self, y):
+        with np.errstate(divide="ignore"):
+            lw = np.log(self.w)
+        terms = [lw[k] + c.logmass(y) for k, c in enumerate(self.components)]
+        return logsumexp(np.stack(np.broadcast_arrays(*terms)), axis=0)
+
     def cdf(self, y):
         return sum(self.w[k] * c.cdf(y) for k, c in enumerate(self.components))
 
@@ -195,6 +215,137 @@ class Mixture(Distribution):
         qs = np.clip(q, 1e-12, 1 - 1e-12)
         comp = np.stack([c.ppf(qs) for c in self.components])
         return comp.min(axis=0), comp.max(axis=0)
+
+
+def _same(y, a):
+    y = np.asarray(y, dtype=float)
+    return np.abs(y - a) <= 1e-9 * np.maximum(1.0, np.abs(a))
+
+
+class PointMass(Distribution):
+    """All the probability at the value a: no density, mass 1 at a."""
+
+    def __init__(self, a):
+        self.a = float(_arr(a))
+
+    def logpdf(self, y):
+        return np.full(np.shape(np.atleast_1d(np.asarray(y, dtype=float))), -np.inf)
+
+    def logmass(self, y):
+        return np.where(_same(np.atleast_1d(y), self.a), 0.0, -np.inf)
+
+    def cdf(self, y):
+        return np.where(np.asarray(y, dtype=float) >= self.a, 1.0, 0.0)
+
+    def ppf(self, q):
+        return np.full(np.shape(q), self.a)
+
+    def sample(self, rng, n=1):
+        return np.full(n, self.a)
+
+
+class ScipyDiscrete(Distribution):
+    """A discrete scipy distribution: logpdf and logmass are the log probability mass."""
+
+    def __init__(self, frozen):
+        self.d = frozen
+
+    def logpdf(self, y):
+        return self.logmass(y)
+
+    def logmass(self, y):
+        y = np.asarray(y, dtype=float)
+        k = np.round(y)
+        return np.where(_same(y, k), self.d.logpmf(k), -np.inf)
+
+    def cdf(self, y):
+        return self.d.cdf(y)
+
+    def ppf(self, q):
+        return self.d.ppf(q)
+
+    def sample(self, rng, n=1):
+        return np.asarray(self.d.rvs(size=n, random_state=rng), dtype=float)
+
+
+def _trials(n):
+    n = _arr(n)
+    if np.any(n < 0) or np.any(np.abs(n - np.round(n)) > 1e-9):
+        raise ValueError("the number of trials must be a non-negative integer")
+    return np.round(n)
+
+
+def Poisson(rate):
+    return ScipyDiscrete(stats.poisson(_scale(rate)))
+
+
+def NegativeBinomial(mean, size):
+    """Counts with mean ``mean`` and variance mean + mean**2 / size."""
+    m, r = _scale(mean), _scale(size)
+    return ScipyDiscrete(stats.nbinom(r, r / (r + m)))
+
+
+def Binomial(trials, prob):
+    return ScipyDiscrete(stats.binom(_trials(trials), np.clip(_arr(prob), 0.0, 1.0)))
+
+
+def BetaBinomial(trials, a, b):
+    return ScipyDiscrete(stats.betabinom(_trials(trials), _scale(a), _scale(b)))
+
+
+class Categorical(Distribution):
+    """Probabilities ``probs`` (non-negative, normalized) on the values ``values``."""
+
+    def __init__(self, values, probs):
+        if len(values) != len(probs) or len(values) < 1:
+            raise ValueError("Categorical needs one probability per value")
+        self.values = [float(_arr(v)) for v in values]
+        p = np.stack(np.broadcast_arrays(*[_arr(v) for v in probs]))
+        if np.any(p < 0) or np.any(p.sum(axis=0) <= 0):
+            raise ValueError("probabilities must be non-negative")
+        self.p = p / p.sum(axis=0)
+
+    def logpdf(self, y):
+        return self.logmass(y)
+
+    def logmass(self, y):
+        y = np.atleast_1d(np.asarray(y, dtype=float))
+        mass = sum(np.where(_same(y, v), self.p[k], 0.0) for k, v in enumerate(self.values))
+        with np.errstate(divide="ignore"):
+            return np.log(mass)
+
+    def cdf(self, y):
+        y = np.asarray(y, dtype=float)
+        return sum(np.where(y >= v, self.p[k], 0.0) for k, v in enumerate(self.values))
+
+    def sample(self, rng, n=1):
+        p = self.p.reshape(len(self.values), -1)
+        k = (rng.random(n)[None, :] > np.cumsum(p, axis=0)).sum(axis=0)
+        return np.asarray(self.values)[np.minimum(k, len(self.values) - 1)]
+
+
+class Shift(Distribution):
+    """The law of Y + c, where Y has distribution ``dist``."""
+
+    def __init__(self, dist, c):
+        if not isinstance(dist, Distribution):
+            raise TypeError("Shift(dist: Distribution, c)")
+        self.dist, self.c = dist, _arr(c)
+
+    def logpdf(self, y):
+        return self.dist.logpdf(np.asarray(y, dtype=float) - self.c)
+
+    def logmass(self, y):
+        return self.dist.logmass(np.asarray(y, dtype=float) - self.c)
+
+    def cdf(self, y):
+        return self.dist.cdf(np.asarray(y, dtype=float) - self.c)
+
+    def ppf(self, q):
+        return self.dist.ppf(q) + self.c
+
+    def sample(self, rng, n=1):
+        return np.asarray(self.dist.sample(rng, n)) + self.c
 
 
 # elementary functions available to programs
@@ -220,6 +371,7 @@ def dot(a, b):
 __all__ = [
     "Distribution", "Normal", "StudentT", "SkewNormal", "Laplace", "LogNormal", "Gamma",
     "MultivariateNormal", "Cov2", "Independent", "Sequential", "Mixture",
+    "PointMass", "Poisson", "NegativeBinomial", "Binomial", "BetaBinomial", "Categorical", "Shift",
     "sin", "cos", "exp", "log", "sqrt", "tanh", "arctan2", "abs", "maximum", "minimum", "where",
     "pi", "sigmoid", "softmax", "dot",
 ]
